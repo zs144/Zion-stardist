@@ -195,7 +195,7 @@ class Config2D(BaseConfig):
         .. _ReduceLROnPlateau: https://keras.io/api/callbacks/reduce_lr_on_plateau/
     """
 
-    def __init__(self, axes='YX', n_rays=32, n_channel_in=1, grid=(1,1), n_classes=None, backbone='unet', **kwargs):
+    def __init__(self, axes='YX', n_rays=32, n_channel_in=3, grid=(1,1), n_classes=None, backbone='unet', **kwargs):
         """See class docstring."""
 
         super().__init__(axes=axes, n_channel_in=n_channel_in, n_channel_out=1+n_rays)
