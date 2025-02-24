@@ -14,6 +14,10 @@ from skimage.measure import regionprops
 from scipy.ndimage import zoom
 from packaging.version import Version
 
+import wandb
+from wandb.integration.keras import WandbMetricsLogger
+from wandb.integration.keras import WandbModelCheckpoint
+
 keras = keras_import()
 Input, Conv2D, MaxPooling2D = keras_import('layers', 'Input', 'Conv2D', 'MaxPooling2D')
 Model = keras_import('models', 'Model')
@@ -349,7 +353,9 @@ class StarDist2D(StarDistBase):
             return Model([input_img], [output_prob,output_dist])
 
 
-    def train(self, X, Y, validation_data, classes='auto', augmenter=None, seed=None, epochs=None, steps_per_epoch=None, workers=1):
+    def train(self, X, Y, validation_data, classes='auto', augmenter=None, seed=None,
+              epochs=None, steps_per_epoch=None, workers=1, use_wandb=False,
+              wandb_entity=None, wandb_project_name=None, wandb_run_name=None):
         """Train the neural network with the given data.
 
         Parameters
@@ -449,27 +455,44 @@ class StarDist2D(StarDistBase):
         self.data_train = StarDistData2D(X, Y, classes=classes, batch_size=self.config.train_batch_size,
                                          augmenter=augmenter, length=epochs*steps_per_epoch, **data_kwargs)
 
-        if self.config.train_tensorboard:
-            # show dist for three rays
-            _n = min(3, self.config.n_rays)
-            channel = axes_dict(self.config.axes)['C']
-            output_slices = [[slice(None)]*4,[slice(None)]*4]
-            output_slices[1][1+channel] = slice(0,(self.config.n_rays//_n)*_n, self.config.n_rays//_n)
-            if self._is_multiclass():
-                _n = min(3, self.config.n_classes)
-                output_slices += [[slice(None)]*4]
-                output_slices[2][1+channel] = slice(1,1+(self.config.n_classes//_n)*_n, self.config.n_classes//_n)
+        if use_wandb:
+            run = wandb.init(
+                entity = wandb_entity,
+                project = wandb_project_name,
+                name = wandb_run_name,
+                config = data_kwargs
+            )
+            self.callbacks = [
+                WandbMetricsLogger(log_freq=self.config.train_steps_per_epoch),
+                WandbModelCheckpoint(filepath=str(self.logdir/f"wandb_models/{wandb_run_name}.weights.h5"),
+                                     monitor="val_loss", save_best_only=True, save_weights_only=True)
+            ]
+        else:
+            if self.config.train_tensorboard:
+                # show dist for three rays
+                _n = min(3, self.config.n_rays)
+                channel = axes_dict(self.config.axes)['C']
+                output_slices = [[slice(None)]*4,[slice(None)]*4]
+                output_slices[1][1+channel] = slice(0,(self.config.n_rays//_n)*_n, self.config.n_rays//_n)
+                if self._is_multiclass():
+                    _n = min(3, self.config.n_classes)
+                    output_slices += [[slice(None)]*4]
+                    output_slices[2][1+channel] = slice(1,1+(self.config.n_classes//_n)*_n, self.config.n_classes//_n)
 
-            if IS_TF_1:
-                for cb in self.callbacks:
-                    if isinstance(cb,CARETensorBoard):
-                        cb.output_slices = output_slices
-                        # target image for dist includes dist_mask and thus has more channels than dist output
-                        cb.output_target_shapes = [None,[None]*4,None]
-                        cb.output_target_shapes[1][1+channel] = data_val[1][1].shape[1+channel]
-            elif self.basedir is not None and not any(isinstance(cb,CARETensorBoardImage) for cb in self.callbacks):
-                self.callbacks.append(CARETensorBoardImage(model=self.keras_model, data=data_val, log_dir=str(self.logdir/'logs'/'images'),
-                                                           n_images=3, prob_out=False, output_slices=output_slices))
+                if IS_TF_1:
+                    for cb in self.callbacks:
+                        if isinstance(cb,CARETensorBoard):
+                            cb.output_slices = output_slices
+                            # target image for dist includes dist_mask and thus has more channels than dist output
+                            cb.output_target_shapes = [None,[None]*4,None]
+                            cb.output_target_shapes[1][1+channel] = data_val[1][1].shape[1+channel]
+                elif self.basedir is not None and not any(isinstance(cb,CARETensorBoardImage) for cb in self.callbacks):
+                    self.callbacks.append(CARETensorBoardImage(
+                        model=self.keras_model, data=data_val,
+                        log_dir=str(self.logdir/'logs'/'images'),
+                        n_images=3, prob_out=False, output_slices=output_slices)
+                    )
+
 
         fit = self.keras_model.fit_generator if (IS_TF_1 and not IS_KERAS_3_PLUS) else self.keras_model.fit
         history = fit(iter(self.data_train), validation_data=data_val,
@@ -479,6 +502,9 @@ class StarDist2D(StarDistBase):
                       # set validation batchsize to training batchsize (only works for tf >= 2.2)
                       **(dict(validation_batch_size = self.config.train_batch_size) if _tf_version_at_least("2.2.0") else {}))
         self._training_finished()
+
+        if use_wandb:
+            run.finish()
 
         return history
 
