@@ -22,3 +22,7 @@ htmlcov/
 config.json
 thresholds.json
 examples/**/data
+
+zion_commands/
+zion_assets/
+examples/2D/models/
