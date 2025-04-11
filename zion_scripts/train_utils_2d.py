@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 def random_fliprot(img, mask): 
     assert img.ndim >= mask.ndim
@@ -23,3 +24,12 @@ def augmenter(x, y):
     sig = 0.02*np.random.uniform(0,1)
     x = x + sig*np.random.normal(0,1,x.shape)
     return x, y
+
+
+def plot_img_label(img, lbl, img_title="image", lbl_title="label", **kwargs):
+    fig, (ai,al) = plt.subplots(1,2, figsize=(8, 4))
+    im = ai.imshow(img)
+    ai.set_title(img_title)
+    al.imshow(lbl * 255, cmap='gray')
+    al.set_title(lbl_title)
+    plt.tight_layout()
