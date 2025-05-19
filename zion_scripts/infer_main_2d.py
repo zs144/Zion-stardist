@@ -94,6 +94,9 @@ elif test_image_filepath:
     test_image = io.imread(test_image_filepath)
     test_image = normalize_mi_ma(test_image, mi=0, ma=255)
     labels, details = model.predict_instances(test_image, prob_thresh=prob_threshold, scale=scale)
+    coords, probs = details["coord"], details["prob"]
+    np.save(os.path.join(output_dir, 'pred_labels.npy'), labels)
+    np.save(os.path.join(output_dir, 'pred_coords.npy'), coords)
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
     lbl_cmap = random_label_cmap()
     ax.imshow(test_image, alpha=0.7)
